@@ -17,9 +17,7 @@ The starting script (provided by the original codebase) implemented:
 
 1. Load a test candidate matrix with `impression_id == 0` to estimate a global induced distribution \(P(c)\) from the model probabilities.
 2. Compute global weights:
-   \[
-   w(c) = \frac{P^\*(c)}{P(c)}
-   \]
+   $w(c) = \frac{P^\*(c)}{P(c)}$
 3. Apply the NAILS transformation category-wise and normalize per user.
 4. Evaluate:
    - User-level KL distribution (per-user KL between Top@N histogram and target)
@@ -30,20 +28,18 @@ The starting script (provided by the original codebase) implemented:
 ## 2. What I changed
 
 ### A) Data and evaluation universe
-**Change:** evaluate user-level alignment on real recommendation impressions.
+Change: evaluate user-level alignment on real recommendation impressions.
 
 - Baseline: used `impression_id == 0` “test candidate matrix” primarily to estimate global category priors and to run some global/top-N evaluation.
 - Now: evaluation is performed on behaviors/impressions where `impression_id > 0` (i.e., user-level rows), which is the correct unit for “user-level alignment”.
 - For each impression row, I construct `inview_categories`, aligned index-wise with `inview_articles` and the corresponding `scores` vector.
 - I define the evaluation universe as the set of all candidate article IDs that appear across the evaluation impressions, and use that universe as the denominator for coverage:
-  \[
-  \text{Coverage@}N = \frac{|\{\text{unique recommended article IDs}\}|}{|\{\text{unique candidate IDs in evaluation universe}\}|}.
-  \]
+$\text{Coverage@}N = \frac{|\{\text{unique recommended article IDs}\}|}{|\{\text{unique candidate IDs in evaluation universe}\}|}.$
 
-### B) Target distribution \(P^\*(c)\) and category ordering
+### B) Target distribution $P^\*(c)$ and category ordering
 Change: make the target distribution and key ordering explicit and stable.
 
-- I compute \(P^\*(c)\) using:
+- I compute $P^\*(c)$ using:
   - Editorial: empirical category frequencies in the evaluation universe.
 - I explicitly store:
   - `nails_keys = list(p_star_ei.keys())`
@@ -54,54 +50,46 @@ Change: make the target distribution and key ordering explicit and stable.
 Change: keep the original “paper/global” method in the same script for a direct comparison.
 
 ### D) Main contribution: user-level NAILS (per-impression weights)
-Change: compute correction weights per impression \(u\).
+Change: compute correction weights per impression $u$.
 
-For each impression \(u\):
+For each impression $u$:
 
-1. Convert base scores into probabilities \(p(i\mid u)\).
+1. Convert base scores into probabilities $p(i\mid u)$.
 2. Compute the user-level category mass:
-   \[
-   P(c\mid u)=\sum_{i \in I_u: c(i)=c} p(i\mid u).
-   \]
+$P(c\mid u)=\sum_{i \in I_u: c(i)=c} p(i\mid u).$
 3. Compute user-specific weights:
-   \[
-   w(c\mid u) = \frac{P^\*(c)}{P(c\mid u)}.
-   \]
+ $w(c\mid u) = \frac{P^\*(c)}{P(c\mid u)}.$
 4. Apply NAILS on items using the weight of their category:
-   \[
-   \tilde{p}(i\mid u;\lambda) = \text{NAILS}\Big(p(i\mid u), \; w(c(i)\mid u), \; \lambda\Big),
-   \]
+$\tilde{p}(i\mid u) = \text{NAILS}\Big(p(i\mid u), \; w(c(i)\mid u))$
    followed by normalization.
 
 Difference between global-level and user-level: the global method corrects "global-level bias", while user-level NAILS corrects "per-user label shift", so each impression is aligned toward the same normative target distribution without forcing every user to share the same correction.
 
 ### E) Ranking policies on the aligned distribution
-Change: evaluate multiple ranking strategies using the aligned probabilities \(\tilde{p}(i\mid u;\lambda)\).
+Change: evaluate multiple ranking strategies using the aligned probabilities $\tilde{p}(i\mid u)$.
 
 After producing aligned probabilities for each impression:
 
 1. DET (deterministic)  
-   Select Top@N by sorting \(\tilde{p}(i\mid u;\lambda)\) descending.
+   Select Top@N by sorting $\tilde{p}(i\mid u)$ descending.
 
 2. PL (Plackett–Luce, without replacement)  
-   Sample a full permutation according to Plackett–Luce “worth” parameters proportional to \(\tilde{p}(i\mid u;\lambda)\), then take the first N items.
+   Sample a full permutation according to Plackett–Luce “worth” parameters proportional to $\tilde{p}(i\mid u)$, then take the first N items.
    - This ranker is stochastic, but the differences over runs were negligible, so I ended up only doing one run (also due to computation restraints mainly caused by lack of time to evaluate results).
 
 3. STECK (greedy calibrated reranking)  
-   Apply a greedy reranker to select Top@N to better match \(P^\*(c)\), using aligned scores.
+   Apply a greedy reranker to select Top@N to better match $P^\*(c)$, using aligned scores.
 
-This yields three user-level recommendation lists per \(\lambda\), plus two lists from the global/paper method (DET and PL).
+This yields three user-level recommendation lists per $\lambda$, plus two lists from the global/paper method (DET and PL).
 
 ### F) Evaluation expansions (beyond the baseline metrics)
 Change: add metrics that are more in line with “what users see”.
 
 #### 1) Expected category alignment (distributional, before Top@N)
 For each impression, compute expected category mass under aligned probabilities:
-\[
-\hat{P}(c\mid u)=\sum_{i\in I_u: c(i)=c}\tilde{p}(i\mid u;\lambda).
-\]
+$\hat{P}(c\mid u)=\sum_{i\in I_u: c(i)=c}\tilde{p}(i\mid u).$
 Which gives metrics that shows:
-- Global expected distribution: average \(\hat{P}(c\mid u)\) over users
+- Global expected distribution: average $\hat{P}(c\mid u)$ over users
 - Mean-over-users KL: average per-user divergence
 
 #### 2) Top@N alignment (flat histograms)
@@ -113,17 +101,13 @@ For each method and impression, build the Top@N category histogram. Which gives:
 Top@N “flat” histograms treat rank 1 and rank N equally, but exposure is higher at the top ranks.
 
 - I define a normalized exposure vector \(w_r\) (discounted cumulative gain-style):
-  \[
-  w_r \propto \frac{1}{\log_2(r+1)}, \quad r=1,\dots,N, \quad \sum_r w_r=1.
-  \]
-- For a Top@N list, accumulate category mass with these weights to obtain an exposure-weighted distribution \(Q^{\text{exp}}_u(c)\).
+  $w_r \propto \frac{1}{\log_2(r+1)}, \quad r=1,\dots,N, \quad \sum_r w_r=1.$
+- For a Top@N list, accumulate category mass with these weights to obtain an exposure-weighted distribution $Q^{\text{exp}}_u(c)$.
 
 I then compute both:
 - Exposure-weighted KL (smoothed KL)
 - Exposure-weighted JS divergence (Jensen–Shannon), implemented via two smoothed KL calls:
-  \[
-  JS(P^\*\parallel Q)=\frac{1}{2}KL(P^\*\parallel M)+\frac{1}{2}KL(Q\parallel M), \;\; M=\frac{1}{2}(P^\*+Q).
-  \]
+  $JS(P^\*\parallel Q)=\frac{1}{2}KL(P^\*\parallel M)+\frac{1}{2}KL(Q\parallel M), \;\; M=\frac{1}{2}(P^\*+Q).$
 
 #### 4) Utility cost (regret vs baseline)
 Change: measure the utility lost by alignment/reranking compared to the original base ranking.
@@ -131,14 +115,10 @@ Change: measure the utility lost by alignment/reranking compared to the original
 For each impression:
 - Compute baseline Top@N by sorting original scores \(s(i\mid u)\).
 - Compute baseline score-sum:
-  \[
-  S_{\text{base}}(u)=\sum_{i \in \text{TopN}_{\text{base}}} s(i\mid u).
-  \]
+  $S_{\text{base}}(u)=\sum_{i \in \text{TopN}_{\text{base}}} s(i\mid u).$
 - Compute method score-sum \(S_{\text{method}}(u)\) from the same original scores but evaluated on the method-selected indices.
 - Define regret:
-  \[
-  \text{Regret}(u)=S_{\text{base}}(u)-S_{\text{method}}(u).
-  \]
+  $\text{Regret}(u)=S_{\text{base}}(u)-S_{\text{method}}(u).$
 Report mean regret over users.
 
 This quantifies “alignment cost” in the native scoring scale of the base model.
@@ -147,27 +127,25 @@ This quantifies “alignment cost” in the native scoring scale of the base mod
 Change: measure how much the recommended set changes relative to the baseline Top@N.
 
 For each impression:
-\[
-\text{Jaccard@}N(u)=\frac{|A_u\cap B_u|}{|A_u\cup B_u|}
-\]
-where \(A_u\) is baseline Top@N and \(B_u\) is method Top@N.
+$\text{Jaccard@}N(u)=\frac{|A_u\cap B_u|}{|A_u\cup B_u|}$
+where $A_u$ is baseline Top@N and $B_u$ is method Top@N.
 
 Higher Jaccard means less disruption (more similar to baseline).
 
-### G) Aggregation and plotting over \(\lambda\)
+### G) Aggregation and plotting over $\lambda$
 Change: export both per-run and aggregated summaries, and produce consistent λ-sweep plots.
 
 - The script writes:
   - Per-run summary: `eval_top{N}_...xlsx`
   - Aggregated summary (mean ± std over runs): `..._agg.xlsx`
 - Plots include:
-  - Expected alignment KL vs \(\lambda\) (global + mean-over-users)
-  - Top@N histogram KL vs \(\lambda\) (global + mean-over-users)
-  - Coverage@N vs \(\lambda\)
-  - Exposure-weighted JS vs \(\lambda\) (global + mean-over-users)
-  - Regret vs \(\lambda\)
-  - Jaccard vs \(\lambda\)
-  - Flat vs exposure-weighted KL vs \(\lambda\)
+  - Expected alignment KL vs $\lambda$ (global + mean-over-users)
+  - Top@N histogram KL vs $\lambda$ (global + mean-over-users)
+  - Coverage@N vs $\lambda$
+  - Exposure-weighted JS vs $\lambda$ (global + mean-over-users)
+  - Regret vs $\lambda$
+  - Jaccard vs $\lambda$
+  - Flat vs exposure-weighted KL vs $\lambda$
 
 ## 3. Implementation notes (what to look for in the code)
 
@@ -194,7 +172,6 @@ Change: export both per-run and aggregated summaries, and produce consistent λ-
 - baseline: Top@N from `pred_scores_f`
 - regret: `base_sum - method_sum`
 - jaccard: overlap of baseline IDs vs method IDs
-
 
 ## 4. How to run
 NOTE: Data is missing from this, as the files are too large to export to github. 
