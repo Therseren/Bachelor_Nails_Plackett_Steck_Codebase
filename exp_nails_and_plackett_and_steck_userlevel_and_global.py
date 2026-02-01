@@ -1,5 +1,4 @@
 # %%
-
 from pathlib import Path
 from tqdm import tqdm
 import polars as pl
@@ -192,7 +191,7 @@ def plackett_luce_permutation(worth: np.ndarray, rng: np.random.Generator, eps: 
     """
     Sample a permutation according to the Plackett–Luce model (without replacement).
 
-    worth: positive worth parameters (aligned probabilities are fine).
+    worth: positive worth parameters (aligned probabilities).
     Returns indices in chosen order (best first).
     """
     worth = np.asarray(worth, dtype=np.float64)
@@ -226,7 +225,7 @@ def summarize_user_distances(dist_list, thresholds=THRESHOLDS):
     return out
 
 # -----------------------------
-# NEW helpers: JS divergence + exposure + utility trade-off
+# Helpers: JS divergence + exposure + utility trade-off
 # -----------------------------
 
 def _to_prob_array(dist_dict, keys, eps=1e-12) -> np.ndarray:
@@ -244,7 +243,7 @@ def compute_js_divergence(p_values: list[float], q_values: np.ndarray, alpha=1e-
     """
     Jensen–Shannon divergence using your smoothed KL implementation.
     p_values: target distribution values (list in nails_keys order)
-    q_values: candidate distribution as numpy array (already same length)
+    q_values: candidate distribution as numpy array
     """
     p = np.asarray(p_values, dtype=np.float64)
     p = np.clip(p, eps, None)
@@ -255,7 +254,6 @@ def compute_js_divergence(p_values: list[float], q_values: np.ndarray, alpha=1e-
     q /= float(q.sum())
 
     m = 0.5 * (p + q)
-    # Use the same smoothed KL for consistency with your KL metrics.
     kl_pm = float(compute_smoothed_kl_divergence(p=p.tolist(), q=m.tolist(), alpha=alpha))
     kl_qm = float(compute_smoothed_kl_divergence(p=q.tolist(), q=m.tolist(), alpha=alpha))
     return 0.5 * (kl_pm + kl_qm)
@@ -265,7 +263,7 @@ def _js_from_dist(dist_dict, keys, p_values, alpha, eps=1e-12) -> float:
     return float(compute_js_divergence(p_values=p_values, q_values=q, alpha=alpha, eps=eps))
 
 def update_weighted_hist(mass: dict, cat_list: list, weights: np.ndarray, keys: list):
-    # cat_list length == len(weights) == topN
+    # cat_list length -- len(weights) -- topN
     for c, w in zip(cat_list, weights):
         if c in mass:
             mass[c] += float(w)
@@ -292,10 +290,10 @@ def plot_topN_histogram_all_methods(
     # user-level
     det_user: dict,
     pl_user: dict,
-    steck_user: dict,        # NEW
+    steck_user: dict,        
     kl_det_user: float,
     kl_pl_user: float,
-    kl_steck_user: float,    # NEW
+    kl_steck_user: float,    
 
     # global/paper method
     det_global: dict,
@@ -313,7 +311,7 @@ def plot_topN_histogram_all_methods(
 
     detU   = np.array([det_user.get(c, 0.0) for c in cats], dtype=float)
     plU    = np.array([pl_user.get(c, 0.0) for c in cats], dtype=float)
-    steckU = np.array([steck_user.get(c, 0.0) for c in cats], dtype=float)  # NEW
+    steckU = np.array([steck_user.get(c, 0.0) for c in cats], dtype=float)
 
     detG = np.array([det_global.get(c, 0.0) for c in cats], dtype=float)
     plG  = np.array([pl_global.get(c, 0.0) for c in cats], dtype=float)
@@ -326,7 +324,7 @@ def plot_topN_histogram_all_methods(
     # 6 bars: user det, user PL, user STECK, target, global det, global PL
     ax.bar(x - 2.5*width, detU,   width, label=f"User Det Top@{topN}")
     ax.bar(x - 1.5*width, plU,    width, label=f"User PL Top@{topN}")
-    ax.bar(x - 0.5*width, steckU, width, label=f"User STECK Top@{topN}")   # NEW
+    ax.bar(x - 0.5*width, steckU, width, label=f"User STECK Top@{topN}")
     ax.bar(x + 0.5*width, tgt,    width, label="Target")
     ax.bar(x + 1.5*width, detG,   width, label=f"Global Det Top@{topN}")
     ax.bar(x + 2.5*width, plG,    width, label=f"Global PL Top@{topN}")
@@ -334,7 +332,7 @@ def plot_topN_histogram_all_methods(
     ax.set_ylabel("Probability")
     ax.set_title(
         f"{title_prefix}Top@{topN} category histogram over users.\n"
-        f"User: KL(det)={kl_det_user:.4f}, KL(PL)={kl_pl_user:.4f}, KL(STECK)={kl_steck_user:.4f}    "
+        f"User: KL(det)={kl_det_user:.4f}, KL(PL)={kl_pl_user:.4f}, KL(STECK)={kl_steck_user:.4f}"
         f"Global: KL(det)={kl_det_global:.4f}, KL(PL)={kl_pl_global:.4f}"
     )
 
@@ -406,7 +404,7 @@ print(f"w_global(c)=P*(c)/P(c): {p_w_global}")
 # -----------------------------
 # Runs (only needed for PL sampling variability)
 # -----------------------------
-runs = 1  # keep 5 by default; set to 1 if you want speed and PL variance is negligible
+runs = 1  # PL variance is low, so single run is sufficient
 base_seed = 123
 
 eval_rows = []
@@ -436,7 +434,6 @@ for run in tqdm(range(runs), ncols=80):
         pl_rec_ids = []
         steck_rec_ids = []
 
-        # For optional submission writing (aligned score vectors per row)
         aligned_score_rows = []
 
         # For global NAILS (paper)
@@ -476,7 +473,7 @@ for run in tqdm(range(runs), ncols=80):
         user_kl_expw_det_globalMethod = []
         user_kl_expw_pl_globalMethod  = []
 
-        # Define rank weights once (DCG-style), normalized so each user contributes total mass 1
+        # Define rank weights once (Discounted cumulative gain-style), normalized so each user contributes total mass 1
         r = np.arange(1, topN + 1)
         rank_w = 1.0 / np.log2(r + 1.0)
         rank_w = rank_w / float(rank_w.sum())
@@ -533,7 +530,7 @@ for run in tqdm(range(runs), ncols=80):
             if act_func == "softmax":
                 p_i_u = softmax(pred_scores_f, axis=0)
             else:
-                # If already probabilities, ensure nonneg and normalize
+                # If already probabilities, make sure it is none-negative and normalize
                 p_i_u = np.clip(pred_scores_f, 0.0, None)
                 s = float(p_i_u.sum())
                 p_i_u = p_i_u / s if s > 0 else np.full_like(p_i_u, 1.0 / len(p_i_u))
@@ -674,11 +671,11 @@ for run in tqdm(range(runs), ncols=80):
             steck_top_ids = greedy_steck_rerank(
                 ids=inview_ids_f,
                 lookup_attr=lookup_cat_str,   # article_id -> category_str
-                scores=aligned_user,          # use aligned distribution as relevance proxy
+                scores=aligned_user,          # aligned distribution
                 p_target=p_star_ei,           # target category distribution
                 lambda_=lambda_val,
                 k=topN,
-                alpha=alpha_steck_select,     # make sure this exists
+                alpha=alpha_steck_select,     
             )
 
             steck_top_ids_arr = np.asarray(steck_top_ids, dtype=np.int64)
@@ -705,7 +702,6 @@ for run in tqdm(range(runs), ncols=80):
             for k in nails_keys:
                 expw_steck_mass_global[k] += float(steck_expw_dist_u.get(k, 0.0))
 
-
             update_count_hist(topN_steck_counts, steck_top_cats, nails_keys)
             steck_rec_ids.extend(list(steck_top_ids))
 
@@ -713,10 +709,9 @@ for run in tqdm(range(runs), ncols=80):
             steck_user_dist = {k: steck_user_dist.get(k, 0.0) for k in nails_keys}
             user_kl_topN_steck.append(_kl_from_dist(steck_user_dist, nails_keys, nails_values, alpha))
 
-
-            # =============================
+            # -----------------------------
             # GLOBAL METHOD (paper): Top@N from aligned_global
-            # =============================
+            # -----------------------------
 
             # Deterministic Top@N from aligned_global
             det_top_idx_glob = np.argsort(-aligned_global)[:topN]
@@ -783,9 +778,9 @@ for run in tqdm(range(runs), ncols=80):
 
             aligned_score_rows.append(final_scores)
 
-        # =========================
+        # -----------------------------
         # Global metrics for this (run, lambda)
-        # =========================
+        # -----------------------------
         # Global expected dists (average over users)
         exp_base_dist_global = {k: exp_base_mass_global[k] / U for k in nails_keys}
         exp_aligned_dist_global = {k: exp_aligned_mass_global[k] / U for k in nails_keys}
@@ -880,7 +875,7 @@ for run in tqdm(range(runs), ncols=80):
         top_pl_close = summarize_user_distances(user_kl_topN_pl, THRESHOLDS)
         top_steck_close = summarize_user_distances(user_kl_topN_steck, THRESHOLDS)
 
-        # Flatten closeness fields into columns (match your naming scheme)
+        # Flatten closeness fields into columns
         user_closeness_cols = {}
         for prefix, summary in [
             ("exp_base", exp_base_close),
@@ -892,9 +887,9 @@ for run in tqdm(range(runs), ncols=80):
             for t in THRESHOLDS:
                 user_closeness_cols[f"{prefix}_pct_le_{float(t)}"] = summary[f"pct_le_{t}"]
         
-        # =========================
+        # -----------------------------
         # GLOBAL METHOD (paper): metrics for this (run, lambda)
-        # =========================
+        # -----------------------------
 
         # Global expected dist (paper/global method)
         exp_aligned_dist_globalMethod = {k: exp_aligned_mass_globalMethod[k] / U for k in nails_keys}
@@ -931,7 +926,6 @@ for run in tqdm(range(runs), ncols=80):
         ]:
             for t in THRESHOLDS:
                 global_method_closeness_cols[f"{prefix}_pct_le_{float(t)}"] = summary[f"pct_le_{t}"]
-
 
         # Record summary row
         eval_rows.append(
@@ -1148,8 +1142,6 @@ out_xlsx_agg = plot_dir.joinpath(f"eval_top{topN}_{PLOT_TAG}_user_vs_paper_agg.x
 df_eval_agg.write_excel(out_xlsx_agg)
 print(f"Wrote aggregated (mean±std) summary to: {out_xlsx_agg}")
 
-
-# ------------------------------------------------------------
 print("Plotting summary curves over lambda (single run)...")
 
 def _get_col(df: pl.DataFrame, name: str):
@@ -1352,8 +1344,8 @@ make_lambda_summary_plot_mean_only(
 
 def make_pareto_scatter(
     df_agg: pl.DataFrame,
-    x_col: str,          # column name in df_agg (e.g. "JS_expw_det_global_mean_over_runs")
-    y_col: str,          # e.g. "regret_det_user_mean_mean_over_runs"
+    x_col: str,          
+    y_col: str,          
     lam_col: str,
     title: str,
     xlabel: str,
@@ -1415,7 +1407,7 @@ make_pareto_scatter(
     outpath=plot_dir.joinpath(f"pareto_globalDET_expwJS_vs_regret_top{topN}_{PLOT_TAG}.png"),
 )
 
-# 11) Flat Top@N hist KL vs Exposure-weighted KL (global) — shows why exposure matters
+# 11) Flat Top@N hist KL vs Exposure-weighted KL (global)
 make_lambda_summary_plot_mean_only(
     df_eval_agg,
     x_col=LAM,
@@ -1431,6 +1423,5 @@ make_lambda_summary_plot_mean_only(
     ylabel="Smoothed KL",
     outpath=plot_dir.joinpath(f"summary_flat_vs_expw_KL_global_top{topN}_{PLOT_TAG}.png"),
 )
-
 
 print("Done: wrote summary plots into:", plot_dir)
